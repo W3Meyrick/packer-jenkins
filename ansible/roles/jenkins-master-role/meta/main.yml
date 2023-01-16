@@ -1,0 +1,6 @@
+galaxy_info:
+  author: Luke Meyrick
+  description: Just another Jenkins role
+  company: Luke Meyrick
+  issue_tracker_url: https://github.com/w3meyrick/packer-jenkins/issues
+  min_ansible_version: 1.2
