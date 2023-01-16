@@ -1,0 +1,51 @@
+- name: Install Jenkins
+  hosts: all
+  tasks: 
+    - name: Update ca-certificates
+      yum:
+          name: ca-certificates
+          state: latest
+  
+
+    - name: Add Jenkins Repo Key
+      rpm_key:
+        state: present
+        key: "https://pkg.jenkins.io/redhat-stable/jenkins.io.key"
+
+
+    - name: "Set Jenkins yum repository"
+      yum_repository:
+          name: "Jenkins"
+          baseurl: "https://pkg.jenkins.io/redhat-stable/"
+          description: "Jenkins from Yum repo"
+
+    
+    - name: "Install Java and Jenkins"
+      yum:
+          name: "{{ item }}"
+          state: present
+      loop:
+          - "java-11-openjdk-devel"
+          - "jenkins"
+      register: install
+
+
+    - name: "Starting Jenkins Service"
+      service:
+          name: "jenkins"
+          state: started
+          enabled: yes
+      register: start
+
+
+    - name: Read File 
+      ansible.builtin.shell:
+        cmd: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: readoutput
+
+
+    - name: Output Message
+      debug: 
+        msg: "{{ readoutput.stdout }}"
+
+
