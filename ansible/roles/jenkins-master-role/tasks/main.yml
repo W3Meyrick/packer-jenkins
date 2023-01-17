@@ -1,51 +1,158 @@
-- name: Install Jenkins
-  hosts: all
-  tasks: 
-    - name: Update ca-certificates
-      yum:
-          name: ca-certificates
-          state: latest
+...
+- name: Update ca-certificates
+  yum:
+      name: ca-certificates
+      state: latest
   
 
-    - name: Add Jenkins Repo Key
-      rpm_key:
-        state: present
-        key: "https://pkg.jenkins.io/redhat-stable/jenkins.io.key"
+- name: Add Jenkins Repo Key
+  rpm_key:
+    state: present
+    key: "https://pkg.jenkins.io/redhat-stable/jenkins.io.key"
 
 
-    - name: "Set Jenkins yum repository"
-      yum_repository:
-          name: "Jenkins"
-          baseurl: "https://pkg.jenkins.io/redhat-stable/"
-          description: "Jenkins from Yum repo"
+- name: "Set Jenkins yum repository"
+  yum_repository:
+      name: "Jenkins"
+      baseurl: "https://pkg.jenkins.io/redhat-stable/"
+      description: "Jenkins from Yum repo"
 
     
-    - name: "Install Java and Jenkins"
+- name: "Install Java and Jenkins"
+  yum:
+      name: "{{ item }}"
+      state: present
+  loop:
+      - "java-11-openjdk-devel"
+      - "jenkins"
+  register: install
+
+
+- name: "Starting Jenkins Service"
+  service:
+      name: "jenkins"
+      state: started
+      enabled: yes
+  register: start
+
+- name: Install Nginx
+  block:
+    - name: Add EPEL and install Nginx
       yum:
-          name: "{{ item }}"
-          state: present
+        name:  "{{ item }}"
+        state: present    
       loop:
-          - "java-11-openjdk-devel"
-          - "jenkins"
-      register: install
-
-
-    - name: "Starting Jenkins Service"
+        - "epel-release"  
+        - "nginx"
+    - name: Create Nginx log directory
+      file:
+        path: /var/log/nginx/jenkins
+        state: directory
+        owner: root
+        group: root
+        recurse: yes
+    - name: Clean NGINX configuration
+      file:
+        state: absent
+        path: /etc/nginx/conf.d/default.conf
+    - name: Copy NGINX configuration
+      copy:
+        src: nginx.default.conf
+        dest: /etc/nginx/conf.d/default.conf
+        owner: root
+        group: root
+        mode: 0644
+    - name: Set httpd_t to permissive in SELINUX
+      selinux_permissive:
+        name: httpd_t
+        permissive: true
+    - name: Enable and Start the NGINX Service
       service:
-          name: "jenkins"
-          state: started
-          enabled: yes
-      register: start
+        enabled: yes
+        state: reloaded
+        name: nginx
 
 
-    - name: Read File 
-      ansible.builtin.shell:
-        cmd: cat /var/lib/jenkins/secrets/initialAdminPassword
-      register: readoutput
+- name: Install PIP
+  easy_install:
+    name: pip
+    state: latest
 
 
-    - name: Output Message
-      debug: 
-        msg: "{{ readoutput.stdout }}"
+- name: Install Ansible
+  pip:
+    name:
+      - ansible
+      - pywinrm
+    extra_args: --ignore-installed
+
+
+- name: Set permissions on Python 2.7 modules directory
+  file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: 0755
+    recurse: yes
+  with_items:
+    - /usr/lib/python2.7/site-packages
+    - /usr/lib64/python2.7/site-packages
+
+
+- name: Set permissions on Ansible executables
+  block:
+    - name: Find Ansible executables
+      find:
+        paths: /usr/bin
+        patterns: ansible*
+      register: ansible_exes
+    - name: Set permissions on Ansible executables
+      file:
+        path: "{{ item.path }}"
+        owner: root
+        group: root
+        mode: 0755
+      with_items: "{{ ansible_exes.files }}"
+
+
+- name: Install JQ
+  yum:
+    name: jq
+    state: latest
+  
+
+- name: Install Unzip
+  yum:
+    name: unzip
+    state: latest
+
+
+- name: Download and unarchive Packer
+  unarchive:
+    src: "https://releases.hashicorp.com/packer/{{ packer_version }}/packer_{{ packer_version }}_linux_{{ packer_arch }}.zip"
+    dest: "{{ packer_bin_path }}"
+    remote_src: true
+    creates: "{{ packer_bin_path }}/packer"
+    mode: 0755
+
+
+- name: Download and unarchive Terraform
+  unarchive:
+    src: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ packer_version }}_linux_{{ packer_arch }}.zip"
+    dest: "{{ terraform_bin_path }}"
+    remote_src: true
+    creates: "{{ terraform_bin_path }}/terraform"
+    mode: 0755
+
+
+- name: Read File 
+  ansible.builtin.shell:
+    cmd: cat /var/lib/jenkins/secrets/initialAdminPassword
+  register: readoutput
+
+
+- name: Output Message
+  debug: 
+    msg: "{{ readoutput.stdout }}"
 
 
